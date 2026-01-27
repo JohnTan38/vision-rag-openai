@@ -207,7 +207,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="font-bold text-xl gradient-text tracking-tight">
-                Vision RAG
+                AI Powered
               </h1>
               <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider">
                 PDF Analyzer
