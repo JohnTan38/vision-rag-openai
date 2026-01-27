@@ -18,10 +18,9 @@ import {
 
 // --- Constants ---
 const SAMPLE_QUESTIONS = [
-  'What is the net profit reported in 3Q25?',
-  'Summarize the capital return dividend details.',
-  'Are there any specific diagrams or charts showing growth?',
-  'Extract the performance metrics from the main table.',
+  'What are the recommendations for cyber defence action plan?',
+  'Summarize the 5 key findings.',
+  
 ];
 
 interface Message {
