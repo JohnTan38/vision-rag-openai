@@ -18,9 +18,10 @@ import {
 
 // --- Constants ---
 const SAMPLE_QUESTIONS = [
-  'What are the recommendations for cyber defence action plan?',
-  'Summarize the 5 key findings.',
-  
+  'What is the net profit reported in 3Q25?',
+  'Summarize the capital return dividend details.',
+  'Are there any specific diagrams or charts showing growth?',
+  'Extract the performance metrics from the main table.',
 ];
 
 interface Message {
@@ -28,8 +29,8 @@ interface Message {
   content: string;
 }
 
-const MAX_IMAGE_PAGES = 6;
-const IMAGE_SCALE = 1.6;
+const MAX_IMAGE_PAGES = 3;
+const IMAGE_SCALE = 1.0; // Scale for PDF page rendering
 
 export default function Home() {
   // --- State ---
@@ -94,7 +95,7 @@ export default function Home() {
       canvas.height = Math.floor(viewport.height);
 
       await page.render({ canvasContext: context, viewport }).promise;
-      images.push(canvas.toDataURL('image/png', 0.92));
+      images.push(canvas.toDataURL('image/jpeg', 0.70)); // jpeg 70% quality
     }
 
     return images;
@@ -148,6 +149,22 @@ export default function Home() {
       return;
     }
 
+    // ✅ NEW: Add payload size check
+    const payload = JSON.stringify({
+      apiKey,
+      messages: [...messages, { role: 'user', content: queryText }],
+      pdfBase64,
+      pdfImages,
+    });
+  
+    const payloadSizeMB = new Blob([payload]).size / (1024 * 1024);
+  
+    if (payloadSizeMB > 4.0) {  // Conservative limit below 4.5MB
+      setError(`Request too large (${payloadSizeMB.toFixed(2)}MB). Try a smaller PDF or reduce quality.`);
+      return;
+    }
+    // ✅ END
+    
     const userMessage: Message = { role: 'user', content: queryText };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
@@ -206,7 +223,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="font-bold text-xl gradient-text tracking-tight">
-                AI Powered
+                Vision RAG
               </h1>
               <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider">
                 PDF Analyzer
