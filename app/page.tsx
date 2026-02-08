@@ -18,10 +18,10 @@ import {
 
 // --- Constants ---
 const SAMPLE_QUESTIONS = [
-  'What is the net profit reported in 3Q25?',
-  'Summarize the capital return dividend details.',
-  'Are there any specific diagrams or charts showing growth?',
-  'Extract the performance metrics from the main table.',
+  'What practices do nonprofit perceived as most effective use when managing stakeholders expectations?',
+  'Name a mechanism that may affect perceptions of accountability of nonprofit organizations.',
+  
+  
 ];
 
 interface Message {
@@ -29,8 +29,12 @@ interface Message {
   content: string;
 }
 
-const MAX_IMAGE_PAGES = 3;
-const IMAGE_SCALE = 0.9; // Scale for PDF page rendering
+const MAX_IMAGE_PAGES = 2;
+const IMAGE_SCALE = 0.4; // Scale for PDF page rendering
+const JPEG_QUALITY = 0.4;
+const MAX_PAYLOAD_SIZE_MB = 3.5;
+const MAX_IMAGE_WIDTH = 1200;
+const MAX_IMAGE_HEIGHT = 1600;
 
 export default function Home() {
   // --- State ---
@@ -38,6 +42,7 @@ export default function Home() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfBase64, setPdfBase64] = useState<string>('');
   const [pdfImages, setPdfImages] = useState<string[]>([]);
+  const [allPdfImages, setAllPdfImages] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -66,7 +71,10 @@ export default function Home() {
     });
   };
 
-  const renderPdfToImages = async (file: File): Promise<string[]> => {
+  const renderPdfToImages = async (
+    file: File,
+    maxPages: number = MAX_IMAGE_PAGES
+  ): Promise<string[]> => {
     const [pdfjsLib, fileBuffer] = await Promise.all([
       import('pdfjs-dist/legacy/build/pdf'),
       file.arrayBuffer(),
@@ -81,12 +89,20 @@ export default function Home() {
     GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${version}/pdf.worker.min.js`;
 
     const pdf = await getDocument({ data: fileBuffer }).promise;
-    const pagesToRender = Math.min(pdf.numPages, MAX_IMAGE_PAGES);
+    const pagesToRender = Math.min(pdf.numPages, maxPages);
     const images: string[] = [];
 
     for (let pageIndex = 1; pageIndex <= pagesToRender; pageIndex += 1) {
       const page = await pdf.getPage(pageIndex);
-      const viewport = page.getViewport({ scale: IMAGE_SCALE });
+      let viewport = page.getViewport({ scale: IMAGE_SCALE });
+
+      const widthScale = MAX_IMAGE_WIDTH / viewport.width;
+      const heightScale = MAX_IMAGE_HEIGHT / viewport.height;
+      const constraintScale = Math.min(widthScale, heightScale, 1);
+
+      if (constraintScale < 1) {
+        viewport = page.getViewport({ scale: IMAGE_SCALE * constraintScale });
+      }
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       if (!context) continue;
@@ -95,10 +111,42 @@ export default function Home() {
       canvas.height = Math.floor(viewport.height);
 
       await page.render({ canvasContext: context, viewport }).promise;
-      images.push(canvas.toDataURL('image/jpeg', 0.60)); // jpeg 60% quality
+      const imageDataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+
+      const imageSizeMB = (
+        new Blob([imageDataUrl]).size /
+        (1024 * 1024)
+      ).toFixed(2);
+      console.log(
+        `Page ${pageIndex}: ${canvas.width}x${canvas.height}, ${imageSizeMB}MB`
+      );
+
+      images.push(imageDataUrl);
     }
 
     return images;
+  };
+
+  const selectRelevantPages = (query: string, allImages: string[]): string[] => {
+    const lowerQuery = query.toLowerCase();
+
+    if (lowerQuery.includes('summary') || lowerQuery.includes('overview')) {
+      return allImages.slice(0, 1);
+    }
+    if (
+      lowerQuery.includes('table') ||
+      lowerQuery.includes('chart') ||
+      lowerQuery.includes('diagram')
+    ) {
+      return allImages.slice(0, 2);
+    }
+    if (
+      lowerQuery.includes('recommendation') ||
+      lowerQuery.includes('finding')
+    ) {
+      return allImages.slice(0, 2);
+    }
+    return allImages.slice(0, 2);
   };
 
   // --- Handle File Upload ---
@@ -112,19 +160,20 @@ export default function Home() {
         const base64 = await convertPDFToBase64(file);
         let renderedImages: string[] = [];
         try {
-          renderedImages = await renderPdfToImages(file);
+          renderedImages = await renderPdfToImages(file, 3);
         } catch (renderError) {
           console.warn('PDF image render failed:', renderError);
         }
         setPdfFile(file);
         setPdfBase64(base64);
-        setPdfImages(renderedImages);
+        setAllPdfImages(renderedImages);
+        setPdfImages(renderedImages.slice(0, 2));
         setIsUploading(false);
         setMessages((prev) => [
           ...prev,
           {
             role: 'system',
-            content: `Successfully uploaded: ${file.name}. Rendered ${renderedImages.length} page(s) as images for diagrams/tables.`,
+            content: `Successfully uploaded: ${file.name}. Rendered ${renderedImages.length} page(s). Using smart page selection to minimize payload.`,
           },
         ]);
       } catch (err) {
@@ -149,23 +198,57 @@ export default function Home() {
       return;
     }
 
-    // ✅ NEW: Add payload size check
+    const userMessage: Message = { role: 'user', content: queryText };
+
+    const relevantImages = selectRelevantPages(queryText, allPdfImages);
+    console.log(
+      `Using ${relevantImages.length} page(s) for query: "${queryText}"`
+    );
+
     const payload = JSON.stringify({
       apiKey,
-      messages: [...messages, { role: 'user', content: queryText }],
+      messages: [...messages, userMessage],
       pdfBase64,
-      pdfImages,
+      pdfImages: relevantImages,
     });
-  
+
     const payloadSizeMB = new Blob([payload]).size / (1024 * 1024);
-  
-    if (payloadSizeMB > 4.0) {  // Conservative limit below 4.5MB
-      setError(`Request too large (${payloadSizeMB.toFixed(2)}MB). Try a smaller PDF or reduce quality.`);
-      return;
+    console.log(`Payload size: ${payloadSizeMB.toFixed(2)}MB`);
+
+    if (payloadSizeMB > MAX_PAYLOAD_SIZE_MB) {
+      setError(
+        `Request too large (${payloadSizeMB.toFixed(
+          2
+        )}MB). Reducing to 1 page and retrying...`
+      );
+
+      const fallbackImages = relevantImages.slice(0, 1);
+      const fallbackPayload = JSON.stringify({
+        apiKey,
+        messages: [...messages, userMessage],
+        pdfBase64,
+        pdfImages: fallbackImages,
+      });
+
+      const fallbackSizeMB = new Blob([fallbackPayload]).size / (1024 * 1024);
+
+      if (fallbackSizeMB > MAX_PAYLOAD_SIZE_MB) {
+        setError(
+          `Request still too large (${fallbackSizeMB.toFixed(
+            2
+          )}MB). Please try a smaller PDF or contact support.`
+        );
+        return;
+      }
+
+      console.log(`Fallback to 1 page: ${fallbackSizeMB.toFixed(2)}MB`);
+      return sendRequest(userMessage, fallbackPayload);
     }
-    // ✅ END
-    
-    const userMessage: Message = { role: 'user', content: queryText };
+
+    return sendRequest(userMessage, payload);
+  };
+
+  const sendRequest = async (userMessage: Message, payload: string) => {
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsProcessing(true);
@@ -177,12 +260,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          apiKey,
-          messages: [...messages, userMessage],
-          pdfBase64,
-          pdfImages,
-        }),
+        body: payload,
       });
 
       const data = await response.json();
@@ -201,13 +279,13 @@ export default function Home() {
       setIsProcessing(false);
     }
   };
-
   // --- Clear Chat ---
   const clearChat = () => {
     setMessages([]);
     setPdfFile(null);
     setPdfBase64('');
     setPdfImages([]);
+    setAllPdfImages([]);
     setError(null);
   };
 
@@ -524,8 +602,8 @@ export default function Home() {
                     className="mt-0.5 flex-shrink-0 text-purple-600"
                   />
                   <span>
-                    PDF text is extracted on the server; the first 6 pages are
-                    rendered to images for diagrams and layout.
+                    PDF text is extracted on the server; up to the first 3
+                    pages are rendered to images for diagrams and layout.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
@@ -572,3 +650,4 @@ export default function Home() {
     </div>
   );
 }
+
