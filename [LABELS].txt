@@ -1,0 +1,6 @@
+[LABELS]
+Primary_Domain: e.g. Project Management / Strategy / Policy / Operations
+Secondary_Domain: e.g. Stakeholder Management
+Audience: Executives / Project Managers / Analysts / Technical Staff
+Document_Type: Report / Policy / Guide / Whitepaper / Training Material
+Sensitivity_Level: Public / Internal / Confidential
