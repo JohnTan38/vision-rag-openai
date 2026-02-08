@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       {
         role: 'system',
         content:
-          'You are a multimodal RAG assistant. You have access to a PDF document provided by the user. Analyze the text and any table-like content to provide accurate, detailed answers. When you see tables, preserve their structure in your response. When PDF page images are provided, use them to interpret diagrams, charts, and visual layout.',
+          'You are a multimodal RAG assistant. You have access to a PDF document provided by the user. Analyze up to 3 pages ofthe text and any table-like content to provide accurate, detailed answers. When you see tables, preserve their structure in your response. When PDF page images are provided, use them to interpret diagrams, charts, and visual layout.',
       },
     ];
 
