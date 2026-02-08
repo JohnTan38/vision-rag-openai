@@ -30,7 +30,7 @@ interface Message {
 }
 
 const MAX_IMAGE_PAGES = 3;
-const IMAGE_SCALE = 1.0; // Scale for PDF page rendering
+const IMAGE_SCALE = 0.9; // Scale for PDF page rendering
 
 export default function Home() {
   // --- State ---
@@ -95,7 +95,7 @@ export default function Home() {
       canvas.height = Math.floor(viewport.height);
 
       await page.render({ canvasContext: context, viewport }).promise;
-      images.push(canvas.toDataURL('image/jpeg', 0.70)); // jpeg 70% quality
+      images.push(canvas.toDataURL('image/jpeg', 0.60)); // jpeg 60% quality
     }
 
     return images;
